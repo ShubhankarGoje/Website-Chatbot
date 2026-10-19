@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eeva Scheduler Demo</title>
+  <style>
+    body { margin: 0; padding: 40px 16px; font-family: system-ui, sans-serif; background: #fafafa; color: #1a1a1f; }
+    @media (prefers-color-scheme: dark) { body { background: #0f0f12; color: #ececf1; } }
+    main { max-width: 640px; margin: 0 auto; }
+  </style>
+  <script type="module" src="./eeva-scheduler.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Eeva demo</h1>
+    <p>The floating "Book a meeting" button in the corner is the widget as it appears on your site.
+       For a dedicated booking page, use <code>&lt;eeva-scheduler inline&gt;</code> instead.</p>
+  </main>
+  <!-- With scripts/local_server.py the API is served from the same origin at /chat.
+       On your site, use the ChatEndpoint output of the SAM stack. -->
+  <eeva-scheduler api-url="/chat" owner-name="Shubhankar"></eeva-scheduler>
+  <script>
+    document.addEventListener("eeva:booked", (e) => console.log("Meeting booked:", e.detail));
+  </script>
+</body>
+</html>

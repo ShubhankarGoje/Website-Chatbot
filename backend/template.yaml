@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Eeva - meeting scheduler chatbot (API Gateway + Lambda + Bedrock + Google Calendar)
+
+Parameters:
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Description: Website origins allowed to call the API (CORS).
+    Default: "https://shubhankargoje.com,https://www.shubhankargoje.com"
+  OwnerName:
+    Type: String
+    Default: Shubhankar
+  OwnerTimezone:
+    Type: String
+    Description: IANA timezone your working hours are in.
+    Default: America/Los_Angeles
+  WorkingHours:
+    Type: String
+    Description: 'Bookable hours, e.g. "mon-fri 09:00-12:00,13:00-17:00; sat 10:00-12:00".'
+    Default: "mon-fri 09:00-17:00"
+  MeetingDurations:
+    Type: String
+    Description: Comma-separated meeting lengths in minutes.
+    Default: "15,30,60"
+  BufferMinutes:
+    Type: Number
+    Description: Free time kept before and after existing events.
+    Default: 10
+  MinNoticeHours:
+    Type: Number
+    Default: 12
+  MaxDaysAhead:
+    Type: Number
+    Default: 30
+  CalendarIds:
+    Type: String
+    Description: Comma-separated Google calendar IDs checked for conflicts. Meetings are booked on the first.
+    Default: primary
+  ModelId:
+    Type: String
+    Default: anthropic.claude-haiku-5-5
+  GoogleSecretName:
+    Type: String
+    Description: Secrets Manager secret holding the Google OAuth credentials (created by scripts/google_auth.py).
+    Default: eeva/google-calendar
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [x86_64]
+    Timeout: 29
+    MemorySize: 512
+
+Resources:
+  ChatApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods: [POST, OPTIONS]
+        AllowHeaders: [content-type]
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 5
+
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.handler
+      Description: Eeva chat endpoint
+      LoggingConfig:
+        LogGroup: !Ref ChatLogGroup
+      Environment:
+        Variables:
+          OWNER_NAME: !Ref OwnerName
+          OWNER_TIMEZONE: !Ref OwnerTimezone
+          WORKING_HOURS: !Ref WorkingHours
+          MEETING_DURATIONS: !Ref MeetingDurations
+          BUFFER_MINUTES: !Ref BufferMinutes
+          MIN_NOTICE_HOURS: !Ref MinNoticeHours
+          MAX_DAYS_AHEAD: !Ref MaxDaysAhead
+          CALENDAR_IDS: !Ref CalendarIds
+          MODEL_ID: !Ref ModelId
+          GOOGLE_SECRET_ID: !Ref GoogleSecretName
+      Policies:
+        - Statement:
+            - Sid: InvokeClaude
+              Effect: Allow
+              Action: bedrock-mantle:CreateInference
+              Resource: "*"
+            - Sid: ReadGoogleCredentials
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GoogleSecretName}-*
+      Events:
+        Chat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ChatApi
+            Path: /chat
+            Method: POST
+
+  ChatLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/eeva-chat
+      RetentionInDays: 30
+
+  ChatServerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Eeva chat API is returning server errors (Bedrock or Google Calendar failures)
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref ChatApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  ChatEndpoint:
+    Description: Set this as the widget's api-url attribute.
+    Value: !Sub https://${ChatApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/chat

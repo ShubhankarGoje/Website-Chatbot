@@ -1,0 +1,12 @@
+# Google OAuth secrets: never commit these
+client_secret*.json
+google-credentials*.json
+
+# Build / tooling
+.aws-sam/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
